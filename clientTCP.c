@@ -7,7 +7,7 @@
 //#define SERVER_PORT 6000
 //#define SERVER_ADDR "192.168.28.96"
 
-
+// ftp://netlab1.fe.up.pt/pub.txt
 int parse_url(char* host, struct URL *url) {
     
     char defaultFTP[] = "ftp://";
@@ -18,10 +18,12 @@ int parse_url(char* host, struct URL *url) {
     }
     cmp[6] = '\0';
 
+
     if(strcmp(cmp, defaultFTP) != 0){
         printf("Invalid URL\n");
         return -1;
     }
+
 
     int index = 6;
     int tempIndex = 0;
@@ -46,13 +48,14 @@ int parse_url(char* host, struct URL *url) {
                     tempIndex = 0;
                 }
                 else if(host[index] == '/'){
-                    state = HOSTNAME;
+                    state = PATH_STATE;
                     index++;
                     url->hostname = malloc(1000*sizeof(char));
+                    url->username = "anonymous";
+                    url->password = "anonymous";
                     strcpy(url->hostname, tempString);
                     memset(tempString, 0, 1000);
                     tempIndex = 0;
-                    tempString[tempIndex++] = host[index];
                 }
                 else{
                     tempString[tempIndex++] = host[index];
@@ -91,8 +94,8 @@ int parse_url(char* host, struct URL *url) {
                 break;
 
             case PATH_STATE:
-                url->path = malloc(1000*sizeof(char));
-                url->filename = malloc(1000*sizeof(char));
+                url->resource_path = malloc(1000*sizeof(char));
+                url->file = malloc(1000*sizeof(char));
                 if (host[index] == '/') {
                     memset(nameString, 0, 1000);
                     nameIndex = 0;
@@ -103,19 +106,22 @@ int parse_url(char* host, struct URL *url) {
                     index++;
                 }
                 break;
+
         }
     }
 
-    strcpy(url->path, tempString);
-    strcpy(url->filename, nameString);
-
+    printf("resource path: %s\n", tempString);
+    strcpy(url->resource_path, tempString);
+    strcpy(url->file, nameString);
+    printf("resource path: %s\n", url->resource_path);
+    
     free(tempString);
     free(nameString);
 
     return 0;
 }
 
-int open_tcp_socket(char* ip, int port){
+int open_tcp_socket_with_response(char* ip, int port){
 
     int sockfd;
     struct sockaddr_in server_addr;
@@ -124,7 +130,6 @@ int open_tcp_socket(char* ip, int port){
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = inet_addr(ip);  
     server_addr.sin_port = htons(port); 
-
 
     if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket()");
@@ -138,127 +143,149 @@ int open_tcp_socket(char* ip, int port){
         return -1;
     }
 
-    if (readResponse(sockfd, response) != SV_WELCOME)
+    if (readResponse(sockfd, NULL) != SV_WELCOME) {
+        printf("Error connecting to server\n");
         return -1;
+    }
 
+    return sockfd;
+}
+
+int open_tcp_socket_without_response(char* ip, int port){
+
+    int sockfd;
+    struct sockaddr_in server_addr;
+
+    bzero((char *) &server_addr, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = inet_addr(ip);  
+    server_addr.sin_port = htons(port); 
+
+    if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+        perror("socket()");
+        return -1;
+    }
+    if (connect(sockfd,
+                (struct sockaddr *) &server_addr,
+                sizeof(server_addr)) < 0) {
+        perror("connect()");
+        return -1;
+    }
     return sockfd;
 }
 
 int authenticate(int socket, char* username, char* password){
     
         char* buf = malloc(1000*sizeof(char));
-        char* response = malloc(1000*sizeof(char));
         size_t bytes;
     
         sprintf(buf, "USER %s\n", username);
         if (send_string(socket, buf) < 0)
             return -1;
     
-        if (readResponse(socket, response) != SV_PASSWORD)
+        if (readResponse(socket, NULL) != SV_PASSWORD)
             return -1;
-    
-        printf("%s\n", response);
 
-        memset(response, 0, 1000);
         sprintf(buf, "PASS %s\n", password);
         if (send_string(socket, buf) < 0)
             return -1;
     
-       if (readResponse(socket, response) != SV_LOGINSUCCESS)
+       if (readResponse(socket, NULL) != SV_LOGINSUCCESS)
             return -1;
     
-        printf("%s\n", response);
-    
-        free(buf);
-        free(response);
-    
+        free(buf);    
         return 0;
 }
 
 int setPassive(int socket, int* port, char* ip){
 
-    char* buf = malloc(1000*sizeof(char));
+    char* buf = malloc(5*sizeof(char));
     char* response = malloc(1000*sizeof(char));
     size_t bytes;
 
     sprintf(buf, "pasv\n");
-    bytes = write(socket, buf, strlen(buf));
-    if (bytes > 0)
-        printf("Bytes written %ld\n", bytes);
-    else {
-        perror("write()");
+    if (send_string(socket, buf) < 0)
         return -1;
-    }
 
     if (readResponse(socket, response) != SV_PASSIVE)
         return -1;
 
-    printf("%s\n", response);
-
     int index = 0;
     int state = START;
-    int tempIndex = 0;
-
-    char* tempString = malloc(1000*sizeof(char));
+    
+    char* ipString = malloc(1000*sizeof(char));
+    int ipIndex = 0;
     char* portString = malloc(1000*sizeof(char));
     int portIndex = 0;
+    int commaCount = 0;
+    int tempPort = 0;
 
-    while(response[index]!='\0'){
+    while(state != PASV_END){
         switch(state){
-            case START:
+            case PASV_START:
                 if(response[index] == '('){
-                    state = IP_FOUND;
+                    state = PASV_IP;
                     index++;
                 }
                 else{
                     index++;
                 }
                 break;
-            case IP_FOUND:
-                if(response[index] == ','){
-                    state = PORT_FOUND;
+            case PASV_IP:
+                if (commaCount == 4){
+                    state = PASV_PORT;
+                    portString[portIndex++] = response[index++];
+                    ipString[ipIndex++] = '\0';
+                }
+                else if(response[index] == ','){
+                    if (commaCount != 3) ipString[ipIndex++] = '.';
+                    commaCount++;
                     index++;
-                    ip = malloc(1000*sizeof(char));
-                    strcpy(ip, tempString);
-                    memset(tempString, 0, 1000);
-                    tempIndex = 0;
                 }
                 else{
-                    tempString[tempIndex++] = response[index];
-                    index++;
+                    ipString[ipIndex++] = response[index++];
                 }
                 break;
 
-            case PORT_FOUND:
-                if(response[index] == ')'){
-                    state = END;
-                    index++;
-                    port = malloc(1000*sizeof(char));
-                    strcpy(port, tempString);
-                    memset(tempString, 0, 1000);
-                    tempIndex = 0;
+            case PASV_PORT:
+                if (response[index] == ',') {
+                    portString[portIndex++] = '\0';
+                    sscanf(portString, "%d", &tempPort);
+                    printf("%d\n", tempPort);
+                    tempPort = tempPort * 256;
+                    memset(portString, 0, 1000);
+                    portIndex = 0;
+                    index++;                  
+
+                } else if(response[index] == ')'){
+                    state = PASV_END;
+                    int temp;
+                    portString[portIndex++] = '\0';
+                    sscanf(portString, "%d", &temp);
+                    tempPort += temp;
                 }
                 else{
-                    tempString[tempIndex++] = response[index];
-                    index++;
+                    portString[portIndex++] = response[index++];
                 }
                 break;
         }
     }
 
-    strcpy(port, tempString);
+    strcpy(ip, ipString);
+    *port = tempPort;
 
-    free(tempString);
+    free(ipString);
     free(portString);
 
     return 0;
 
 }
 
-int readResponse(int socket, char *buf){    
+int readResponse(int socket, char *response){    
 
     int state = RESPONSE_START;
     int bytes;
+    char buf[1];
 
     char* code = malloc(4*sizeof(char));
     int code_index = 0;
@@ -266,38 +293,44 @@ int readResponse(int socket, char *buf){
     int response_line_index = 0;
 
     while (state != RESPONSE_END)
-    {
+    {   
         bytes = read(socket, buf, 1);
+        if (bytes <= 0) {
+            perror("read()");
+            return -1;
+        }
         switch (state)
         {
         case RESPONSE_START:
-            if (buf[0] == ' ')
+            if (buf[0] == ' ') {
                 code[code_index++] = '\0';
                 printf("%s ", code);
                 state = RESPONSE_SINGLELINE;
-            else if (buf[0] == '-')
+            } else if (buf[0] == '-') {
                 code[code_index++] = '\0';
                 printf("%s-", code);
                 state = RESPONSE_MULTILINE;
-            else if (buf[0] == '\n')
+            } else if (buf[0] == '\n') {
                 code[code_index++] = '\0';
                 printf("%s\n", code);
                 state = RESPONSE_END;
-            else
-                code[code_index] = buf[0];
+            } else {
+                code[code_index++] = buf[0];
+            }    
             break;
         
         case RESPONSE_SINGLELINE:
-            if (buf[0] == '\n')
+            if (buf[0] == '\n') {
                 response_line[response_line_index++] = '\0';
                 printf("%s\n", response_line);
                 state = RESPONSE_END;
-            else
+            } else {
                 response_line[response_line_index++] = buf[0];
+            }    
             break;
 
         case RESPONSE_MULTILINE:
-            if (buf[0] == '\n')
+            if (buf[0] == '\n') {
                 response_line[response_line_index++] = '\0';
                 printf("%s\n", response_line);
                 memset(response_line, 0, 1000);
@@ -305,20 +338,23 @@ int readResponse(int socket, char *buf){
                 response_line_index = 0;
                 code_index = 0;
                 state = RESPONSE_START;
-            else
+            } else {
                 response_line[response_line_index++] = buf[0];
+            }    
             break;
 
         default:
             break;
         }
     }
+    if (response != NULL)
+        strcpy(response, response_line);
 
-    free(code);
-    free(response_line);
 
     int ret;
     sscanf(code, "%d", &ret);
+    free(code);
+    free(response_line);
     
     return ret;
 }
@@ -327,14 +363,22 @@ int readResponse(int socket, char *buf){
 int request_file(int socket, char* resource_path){
     char cmd[5+strlen(resource_path)+1];
     sprintf(cmd, "retr %s\n", resource_path);
-    write(socket, cmd, sizeof(cmd));
+    send_string(socket, cmd);
+
+    if (readResponse(socket, NULL) != SV_DATACONNECTION)
+        return -1;
     return 0;
+    /*
+    char cmd[5+strlen(resource_path)+1];
+    sprintf(cmd, "retr %s\n", resource_path);
+    write(socket, cmd, sizeof(cmd));
+    return readResponse(socket, NULL);
+    */
 }
 
 int receive_file(int socket, char* file) {
     
     FILE *fd = fopen(file, "wb");
-
     if(fd == NULL){
         perror("fopen()");
         return -1;
@@ -349,20 +393,17 @@ int receive_file(int socket, char* file) {
     }
 
     fclose(fd);
+    printf("File received\n");
 
-    if(readResponse(socket, response) != SV_TRANSFERCOMPLETE) 
-        return -1;
-
+    printf("Transfer complete\n");
     return 0;
 }
 
-
-
 int send_string(int socket, char *buf){
+    int bytes;
     bytes = write(socket, buf, strlen(buf));
-    if (bytes > 0)
-        printf("Bytes written %ld\n", bytes);
-    else {
+    printf("%s", buf);
+    if (bytes <= 0) {
         perror("write()");
         return -1;
     }
@@ -421,5 +462,6 @@ int main(int argc, char **argv) {
 }
 
 */
+
 
 

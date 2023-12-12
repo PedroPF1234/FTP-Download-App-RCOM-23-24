@@ -138,7 +138,7 @@ int open_tcp_socket(char* ip, int port){
         return -1;
     }
 
-    if (readResponse(sockfd, response) != SV_WELCOME)
+    if (readResponse(sockfd, NULL) != SV_WELCOME)
         return -1;
 
     return sockfd;
@@ -147,27 +147,22 @@ int open_tcp_socket(char* ip, int port){
 int authenticate(int socket, char* username, char* password){
     
         char* buf = malloc(1000*sizeof(char));
-        char* response = malloc(1000*sizeof(char));
         size_t bytes;
     
         sprintf(buf, "USER %s\n", username);
         if (send_string(socket, buf) < 0)
             return -1;
     
-        if (readResponse(socket, response) != SV_PASSWORD)
+        if (readResponse(socket, NULL) != SV_PASSWORD)
             return -1;
-    
-        printf("%s\n", response);
 
         memset(response, 0, 1000);
         sprintf(buf, "PASS %s\n", password);
         if (send_string(socket, buf) < 0)
             return -1;
     
-       if (readResponse(socket, response) != SV_LOGINSUCCESS)
+       if (readResponse(socket, NULL) != SV_LOGINSUCCESS)
             return -1;
-    
-        printf("%s\n", response);
     
         free(buf);
         free(response);
@@ -177,76 +172,76 @@ int authenticate(int socket, char* username, char* password){
 
 int setPassive(int socket, int* port, char* ip){
 
-    char* buf = malloc(1000*sizeof(char));
+    char* buf = malloc(5*sizeof(char));
     char* response = malloc(1000*sizeof(char));
     size_t bytes;
 
     sprintf(buf, "pasv\n");
-    bytes = write(socket, buf, strlen(buf));
-    if (bytes > 0)
-        printf("Bytes written %ld\n", bytes);
-    else {
-        perror("write()");
+    if (send_string(socket, buf) < 0)
         return -1;
-    }
 
     if (readResponse(socket, response) != SV_PASSIVE)
         return -1;
 
-    printf("%s\n", response);
-
     int index = 0;
     int state = START;
-    int tempIndex = 0;
-
-    char* tempString = malloc(1000*sizeof(char));
+    
+    char* ipString = malloc(1000*sizeof(char));
+    int ipIndex = 0;
     char* portString = malloc(1000*sizeof(char));
     int portIndex = 0;
+    int commaCount = 0;
+    int tempPort = 0;
 
-    while(response[index]!='\0'){
+    while(state != PASV_END){
         switch(state){
-            case START:
+            case PASV_START:
                 if(response[index] == '('){
-                    state = IP_FOUND;
+                    state = PASV_IP;
                     index++;
                 }
                 else{
                     index++;
                 }
                 break;
-            case IP_FOUND:
-                if(response[index] == ','){
+            case PASV_IP:
+                if (commaCount == 4){
                     state = PORT_FOUND;
                     index++;
-                    ip = malloc(1000*sizeof(char));
-                    strcpy(ip, tempString);
-                    memset(tempString, 0, 1000);
-                    tempIndex = 0;
+                }
+                else if(response[index] == ','){
+                    ipString[ipIndex++] = '.';
+                    commaCount++;
+                    index++;
                 }
                 else{
-                    tempString[tempIndex++] = response[index];
-                    index++;
+                    ipString[ipIndex++] = response[index++];
                 }
                 break;
 
             case PORT_FOUND:
-                if(response[index] == ')'){
-                    state = END;
-                    index++;
-                    port = malloc(1000*sizeof(char));
-                    strcpy(port, tempString);
-                    memset(tempString, 0, 1000);
-                    tempIndex = 0;
+                if (response[index] == ',') {
+                    sscanf(portString, "%d", &tempPort);
+                    tempPort = tempPort * 256;
+                    memset(portString, 0, 1000);
+                    portIndex = 0;
+                    index++;                  
+
+                } else if(response[index] == ')'){
+                    state = PASV_END;
+                    int temp;
+                    sscanf(portString, "%d", &temp);
+                    tempPort += temp;
                 }
                 else{
-                    tempString[tempIndex++] = response[index];
-                    index++;
+                    portString[portString++] = response[index++];
                 }
                 break;
         }
     }
 
-    strcpy(port, tempString);
+    strcpy(ip, ipString);
+    *port = tempPort;
 
     free(tempString);
     free(portString);
@@ -255,10 +250,11 @@ int setPassive(int socket, int* port, char* ip){
 
 }
 
-int readResponse(int socket, char *buf){    
+int readResponse(int socket, char *response){    
 
     int state = RESPONSE_START;
     int bytes;
+    char buf[1];
 
     char* code = malloc(4*sizeof(char));
     int code_index = 0;
@@ -314,6 +310,9 @@ int readResponse(int socket, char *buf){
         }
     }
 
+    if (response != NULL)
+        strcpy(response, response_line);
+
     free(code);
     free(response_line);
 
@@ -350,13 +349,11 @@ int receive_file(int socket, char* file) {
 
     fclose(fd);
 
-    if(readResponse(socket, response) != SV_TRANSFERCOMPLETE) 
+    if(readResponse(socket, NULL) != SV_TRANSFERCOMPLETE) 
         return -1;
 
     return 0;
 }
-
-
 
 int send_string(int socket, char *buf){
     bytes = write(socket, buf, strlen(buf));

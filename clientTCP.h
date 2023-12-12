@@ -24,6 +24,12 @@
 #define RESPONSE_MULTILINE 4
 #define RESPONSE_END 5
 
+// PASV State Machine
+#define PASV_START 0
+#define PASV_IP 1
+#define PASV_PORT 2
+#define PASV_END 3
+
 // FTP Feedback Codes
 #define SV_WELCOME 220
 #define SV_PASSWORD 331

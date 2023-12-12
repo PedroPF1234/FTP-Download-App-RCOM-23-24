@@ -9,6 +9,9 @@
 #include <unistd.h>
 #include <string.h>
 
+#include "getip.h"
+#include "clientTCP.h"
+
 #define MAX_CHARS 1000
 
 

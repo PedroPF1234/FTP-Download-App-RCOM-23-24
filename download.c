@@ -1,4 +1,4 @@
-#include <download.h>
+#include "download.h"
 
 int main(int argc, char *argv[]) {
 
@@ -22,6 +22,8 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Target Host: %s\nFile Name: %s\nUser: %s\nPassword: %s\n", url.hostname, url.file, url.username, url.password);
+
+    char* ip = get_ip(url.hostname);
 
 
     if ((sockfd_A = open_tcp_socket(url.ip, FTP_PORT)) < 0) {

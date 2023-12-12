@@ -324,6 +324,40 @@ int readResponse(int socket, char *buf){
 }
 
 
+int request_file(int socket, char* resource_path){
+    char cmd[5+strlen(resource_path)+1];
+    sprintf(cmd, "retr %s\n", resource_path);
+    write(socket, cmd, sizeof(cmd));
+    return 0;
+}
+
+int receive_file(int socket, char* file) {
+    
+    FILE *fd = fopen(file, "wb");
+
+    if(fd == NULL){
+        perror("fopen()");
+        return -1;
+    }
+
+    char* buf = malloc(1000*sizeof(char));
+    int bytes = read(socket, buf, 1000);
+
+    while(bytes > 0){
+        fwrite(buf, bytes, 1, fd);
+        bytes = read(socket, buf, 1000);
+    }
+
+    fclose(fd);
+
+    if(readResponse(socket, response) != SV_TRANSFERCOMPLETE) 
+        return -1;
+
+    return 0;
+}
+
+
+
 int send_string(int socket, char *buf){
     bytes = write(socket, buf, strlen(buf));
     if (bytes > 0)

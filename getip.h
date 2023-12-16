@@ -13,7 +13,7 @@ struct hostent {
     int h_addrtype;    // The type of address being returned; usually AF_INET.
     int h_length;    // The length of the address in bytes.
     char **h_addr_list;    // A zero-terminated array of network addresses for the host.
-    // Host addresses are in Network Byte Order.
+    // Host addresses are in Network Byte Order. //
 };
 */
 struct hostent* getHostIP(char* hostname); 

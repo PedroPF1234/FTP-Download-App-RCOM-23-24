@@ -70,3 +70,10 @@ passivo, receber ficheiros e enviar comandos.
 
 A aplicação foi testada procedendo-se ao download de vários ficheiros de diversos
 tamanhos.
+
+![FTP App Test](https://github.com/PedroPF1234/FTP-Download-App-RCOM-23-24/assets/64153096/8ed40bdb-4186-4f35-8283-5cb3358b889c)
+
+# Team
+Pedro Fonseca
+
+Maria Laranjeira

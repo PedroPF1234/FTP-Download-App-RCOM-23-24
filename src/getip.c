@@ -6,7 +6,7 @@
 
 //The struct hostent (host entry) with its terms documented
 
-#include "getip.h"
+#include "../headers/getip.h"
 
 struct hostent* getHostIP(char* hostname) {
 

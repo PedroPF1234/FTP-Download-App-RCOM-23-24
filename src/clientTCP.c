@@ -1,8 +1,8 @@
 /**      (C)2000-2021 FEUP
  *       tidy up some includes and parameters
  * */
-
-#include "clientTCP.h"
+    
+#include "../headers/clientTCP.h"
 
 //#define SERVER_PORT 6000
 //#define SERVER_ADDR "192.168.28.96"

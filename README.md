@@ -1,6 +1,6 @@
 ### Rede de Computadores
 
-## 2º Trabalho Laboratorial##
+## 2º Trabalho Laboratorial
 
 Este projeto foi realizado no âmbito da unidade curricular de Redes de
 Computadores da Faculdade de Engenharia da Universidade do Porto, com o objetivo de
